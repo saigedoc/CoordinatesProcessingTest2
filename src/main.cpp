@@ -5,20 +5,49 @@
 #include <filesystem>
 #include <vector>
 #include <nlohmann/json.hpp>
-#include <Windows.h>
 #include <regex>
-
 
 using boost::asio::ip::tcp;
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
+/**
+ * @brief Основная функция, осуществляет создание сервера и обработку координат.
+ *
+ * Открывает файл с координатами сохраняет в вектор.
+ * Открывает и обрабатывает все текстовые файлы в папке texts.
+ * Все обработанные данные записываются в json, пример архитектуры будет ниже.
+ * Создаёт сервер на tcp://localhost:8080 с помощью boost asio.
+ * Отправляет полученный json на страницу.
+ * 
+ * Архитектура json:
+ * [
+    {
+        "coordinates":[
+            {
+                "group": 1,
+                "coords":[
+                    {
+                        "coord": "12.2112 -32.434",
+                        "sentence": "some text with coord",
+                        "type": ("part of poligon" / "part of line" / "point"),
+                        "format": ("Decimal Degrees, DD" / "Degrees and Decimal Minutes, DDM" / "DMM compact" / "DMS/DDM compact")
+                    },
+                    {
+                        "coord": "12.2112 -32.434",
+                        "in sentence": "some text with coord",
+                        "type": ("part of poligon" / "part of line" / "point"),
+                        "format": ("Decimal Degrees, DD" / "Degrees and Decimal Minutes, DDM" / "DMM compact" / "DMS/DDM compact")
+                    }
+                ]
+            }
+                    
+        ] 
+    }
+    ]
+ */
 
 int main(){
-    SetConsoleCP(65001);// установка кодовой страницы win-cp 1251 в поток ввода
-    SetConsoleOutputCP(65001); // установка кодовой страницы win-cp 1251 в поток вывода
-    printf("ТЕСТ\n");
-    printf("g-1\n");
     std::ifstream coords("coordinates.txt");
     std::vector<std::string> coords_list;
     std::string line;
@@ -27,7 +56,6 @@ int main(){
         if (double_space != -1){
             line.erase(double_space, line.length() - 1);
         }
-        //std::cout << "cal " << line << std::endl;
         line = std::regex_replace(line, std::regex(", "), " ");
         coords_list.push_back(line);
     }
@@ -37,46 +65,10 @@ int main(){
     std::string p;
     json output = json::array();
     int file_num = 0;
-    for (const auto & entry : fs::directory_iterator(path)){
-        //std::cout << entry.path().string() << std::endl;
-        //p = entry.path().string();
-        /*
-        1. найти совпадения.
-        2. Определить тип свопадающх координат
-        3. Название если есть
-        4. Формат (Decimal Degrees, DD 0.1 -(s)0.1 / Degrees and Decimal Minutes, DDM  -(a)0-1 (b)00-10 / DMM compact 0100(a) / DMS/DDM compact 01000.00(a))
-
-        [
-            {
-            "coordinates":[
-                {
-                "group": 1,
-                "coords":[
-                    {
-                    "coord": 12.2112 -32.434,
-                    "sentence": some text,
-                    "type": part of poligon / part of line / point,
-                    },
-                    {
-                    "coord": 12.2112 -32.434,
-                    "in sentence": some text,
-                    "type": part of poligon / part of line / point,
-                    "format": DD
-                    }
-                ]
-                }
-                    
-                ] 
-            }
-        ]
-
-        */
-        //printf("%s\n", entry.path().string().c_str());
-        //printf("g0\n");
+    for (const auto & entry : fs::directory_iterator(path)){ //Перебор файлов в папке texts
         output.push_back({{"coordinates", json::array({{{"group", 1}, {"coords",   json::array()}}})}});
         std::ifstream text(entry.path().string());
-        //printf("g\n");
-        
+
         while (std::getline(text, line)){
             for (int i = 0; i < coords_list.size(); ++i){
                 std::string coord = coords_list[i];
@@ -85,8 +77,7 @@ int main(){
                 std::string c1 = c.substr(c.find(" ") + 1, c.length() - c.find(" ") - 1);
                 size_t lf = line.find(c0);
                 size_t lf1 = line.find(c1);
-                
-                if ((lf == -1) || (lf1 == -1)){
+                if ((lf == -1) || (lf1 == -1)){ //Если нет совпадений -> проверка следующих координат в строке
                     continue;
                 }
                 output.back()["coordinates"].back()["group"] = std::atoi(&coord[0]);
@@ -102,7 +93,7 @@ int main(){
                 else {
                     name = "";
                 }
-                if ((c.find(".") != -1) && (c.find("°") != -1) && (c.find("'") != -1)){
+                if ((c.find(".") == std::string::npos) && (c.find("°") == std::string::npos) && (c.find("'") == std::string::npos)){
                     size_t defis = c.substr(1, c.length() - 1).find("-");
                     if (std::isdigit(c[defis - 1])){
                         format = "Degrees and Decimal Minutes, DDM";
@@ -117,38 +108,25 @@ int main(){
                 else {
                     format = "Decimal Degrees, DD";
                 }
-                //printf("g1\n");
-                //std::cout << "t1" << std::endl;
                 if (output[file_num]["coordinates"].back()["group"] != std::atoi(&coord[0])){ //проверка на группу, если новая, определяем тип прошлой.
                     json c_list = output[file_num]["coordinates"].back()["coords"];
                     if (c_list.size() == 1){
-                        //printf("g3\n");
                         output[file_num]["coordinates"].back()["coords"][0]["type"] = "point";
                     }
                     else {
                         if (std::adjacent_find(c_list.begin(), c_list.end()) != c_list.end()){
                             for (int i = 0; i < c_list.size(); ++i){
-                                //printf("g4\n");
                                 output[file_num]["coordinates"].back()["coords"][i]["type"] = "part of poligon";
                             }
-                            
                         }
                         else {
                             for (int i = 0; i < c_list.size(); ++i){
-                                //printf("g5\n");
                                 output[file_num]["coordinates"].back()["coords"][i]["type"] = "part of line";
                             }
                         }
                     }
-                    //printf("g6\n");
-                    //std::cout << "coord" << coord << std::endl;
                     output[file_num]["coordinates"].push_back(json::array({{{"group", std::atoi(&coord[0])}, {"coords",   json::array()}}})); //новая группа
-                    //std::cout << output << std::endl;
                 }
-                //printf("g7\n");
-                //std::cout << output << std::endl;
-                //std::cout << "gwgw    "<< output[file_num]["coordinates"].back() << std::endl;
-                
                 output[file_num]["coordinates"].back()["coords"].push_back({{"coord", c}, {"sentence", sentence}, {"type", ""}, {"format", format}, {"name", name}});
             }
         }
@@ -171,10 +149,6 @@ int main(){
         }
         file_num ++;
     }
-    
-    std::cout << output << std::endl;
-    std::cout << "END" << std::endl;
-
 
     boost::asio::io_context io_context;
     tcp::acceptor server(io_context, tcp::endpoint(tcp::v4(), 8080));
@@ -188,11 +162,11 @@ int main(){
         size_t length = socket.read_some(boost::asio::buffer(request), ec);
         if (ec) continue;
 
-        std::string json = R"({"message": "Hello, World!"})";
+        std::string json_raw = output.dump();
         std::string response =
             "HTTP/1.1 200 OK\r\n"
             "Content-Type: application/json\r\n"
-            "Content-Length: " + std::to_string(json.size()) + "\r\n\r\n" + json;
+            "Content-Length: " + std::to_string(json_raw.size()) + "\r\n\r\n" + json_raw;
 
         boost::asio::write(socket, boost::asio::buffer(response));
     }
