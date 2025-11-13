@@ -8,7 +8,6 @@ add_executable(main src/main.cpp)
 
 target_link_libraries(main PRIVATE Boost::system)
 
-# Для Windows: добавить Winsock
 if(WIN32)
     target_link_libraries(main PRIVATE ws2_32)
 endif()
