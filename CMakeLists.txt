@@ -1,16 +1,14 @@
 cmake_minimum_required(VERSION 3.30)
 project(http_servis LANGUAGES CXX)
 
-add_executable(app src/main.cpp)
+find_package(Boost REQUIRED COMPONENTS system)
+find_package(nlohmann_json 3.12.0 REQUIRED)
 
-find_package(boost REQUIRED)
+add_executable(main src/main.cpp)
 
-# Связываем серверное приложение с библиотекой
-#target_link_libraries(server_app PRIVATE server_lib)
-target_link_libraries(app PRIVATE cppzmq cppzmq-static)
-# Установка имени выходного файла (опционально)
-#set_target_properties(server_app PROPERTIES OUTPUT_NAME "server")
-# Добавляем путь к заголовкам сервера
-target_include_directories(app PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../include
-)
+target_link_libraries(main PRIVATE Boost::system)
+
+# Для Windows: добавить Winsock
+if(WIN32)
+    target_link_libraries(main PRIVATE ws2_32)
+endif()
